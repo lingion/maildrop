@@ -1,21 +1,30 @@
-# cf-mail-api — 中文说明
+<p align="center">
+  <a href="https://github.com/lingion/cf-mail-api/stargazers"><img src="https://img.shields.io/github/stars/lingion/cf-mail-api?style=for-the-badge&logo=github&color=FFD700" alt="Stars"></a>
+  <a href="https://github.com/lingion/cf-mail-api/network/members"><img src="https://img.shields.io/github/forks/lingion/cf-mail-api?style=for-the-badge&logo=github&color=8B5CF6" alt="Forks"></a>
+  <a href="https://github.com/lingion/cf-mail-api/issues"><img src="https://img.shields.io/github/issues/lingion/cf-mail-api?style=for-the-badge&logo=github&color=EF4444" alt="Issues"></a>
+  <a href="https://github.com/lingion/cf-mail-api/blob/main/LICENSE"><img src="https://img.shields.io/github/license/lingion/cf-mail-api?style=for-the-badge&logo=github&color=10B981" alt="License"></a>
+  <br>
+  <a href="https://github.com/lingion/cf-mail-api/commits/main"><img src="https://img.shields.io/github/last-commit/lingion/cf-mail-api?style=flat-square" alt="Last commit"></a>
+  <img src="https://img.shields.io/badge/runtime-Cloudflare%20Workers-F38020?style=flat-square&logo=cloudflare&logoColor=white" alt="CF Workers">
+  <img src="https://img.shields.io/badge/storage-Cloudflare%20D1-FF7043?style=flat-square&logo=cloudflare&logoColor=white" alt="D1">
+  <img src="https://img.shields.io/badge/lang-JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=black" alt="JS">
+  <a href="README.md"><img src="https://img.shields.io/badge/README-English-0078D4?style=flat-square" alt="English"></a>
+</p>
 
-> 基于 **Cloudflare Workers + D1** 自建临时邮箱服务，使用你自己的自定义子域名。
-> 把它当作个人可丢弃邮箱后端：随时生成 `xxx@<你的域名>`，收件、转发、读取一站式搞定。
+<h1 align="center">cf-mail-api</h1>
 
-[English documentation](./README.md)
-
-| | |
-|---|---|
-| **许可证** | GNU GPL-3.0 |
-| **运行平台** | Cloudflare Workers（免费额度即可） |
-| **存储** | Cloudflare D1（SQLite） |
-| **收件** | Cloudflare Email Routing → Worker → D1 + 可选转发 |
-| **发件** | Resend API（或其他 HTTP 发件服务商） |
+<p align="center">
+  基于 <b>Cloudflare Workers + D1</b> 自建临时邮箱服务，使用你自己的自定义子域名。<br>
+  随时生成 <code>xxx@&lt;你的域名&gt;</code>，收件入 D1，转发到你的真实邮箱。
+</p>
 
 ---
 
-## ⚠️ 部署前必读
+> **关键词：** Cloudflare Workers、Cloudflare D1、Email Routing、临时邮箱、可丢弃邮箱、自定义子域名、自建邮件服务器、免费额度、邮件转发、Resend API
+
+---
+
+## 部署前必读
 
 > **不要**把任何人的 worker URL 拿来直接用。**不要**把部署好的 URL 发到任何公开渠道。**不要**用默认的 `*.workers.dev` 当公共邮箱服务。
 >
@@ -25,15 +34,33 @@
 
 ---
 
-## 功能特性
+## 仓库内容
 
-- 按需生成可丢弃邮箱地址：`POST /api/generate-email`
-- 列出邮箱、列出邮件、读取单封、删除、清空
-- 入站 webhook 摄取：`POST /api/inbound`
-- 自动把所有入站邮件转发到你的真实邮箱（如 QQ/Gmail），通过 `FORWARD_TO_EMAIL` 配置
-- 可选发件功能（Resend，独立 `send.<你的域名>` 路由）
-- 支持 Bearer token / `x-api-key` / `?api_key=*** 三种鉴权
-- 纯 `curl` 友好，无需 SDK
+| 组件 | 用途 |
+|---|---|
+| `src/index.js` | 主 worker——收件处理 + 邮箱 API |
+| `src/send.js` | 可选的发件路由（Resend） |
+| `schema.sql` | D1 数据库结构（mailboxes / messages） |
+| `wrangler.toml` | Worker 配置——**部署前必须替换占位符** |
+| `cloudflare_mail_client.py` | 可选 Python 客户端 |
+| `LICENSE` | GNU GPL-3.0 |
+| `README.md` | English documentation |
+| `README.zh.md` | 中文文档（本文件） |
+
+---
+
+## 技术栈
+
+| 层 | 选型 |
+|---|---|
+| 运行时 | Cloudflare Workers（V8 isolates）|
+| 存储 | Cloudflare D1（SQLite）|
+| 收件 | Cloudflare Email Routing → Worker |
+| 发件（可选）| Resend HTTP API |
+| 鉴权 | Bearer token / `x-api-key` / `?api_key=` |
+| 客户端（可选）| Python 3（`requests`）|
+
+无 Node 依赖、无框架、无构建步骤。纯 `wrangler deploy`。
 
 ---
 
@@ -66,10 +93,10 @@ wrangler d1 execute mail_api --remote --file=./schema.sql
 
 把 **所有** `<你的域名>` 占位符换成你自己 CF 托管的域名。把 `<your-d1-database-id>`、`<your-api-token>`、`<your-real-inbox@example.com>` 换成你自己的值。
 
-**收件子域** (`mail.<你的域名>`)、**API 子域** (`api.<你的域名>`)、**发件子域** (`send.<你的域名>`) 必须在同一个 zone 下，且都在你自己名下。
+**收件子域**（`mail.<你的域名>`）、**API 子域**（`api.<你的域名>`）、**发件子域**（`send.<你的域名>`）必须在同一个 zone 下，且都在你自己名下。
 
 ```toml
-# 示例（请勿直接复制这些值）：
+# 示例——请勿直接复制这些值：
 [[routes]]
 pattern = "api.example.com/*"
 zone_name = "example.com"
@@ -195,7 +222,7 @@ curl -X POST 'https://api.<你的域名>/api/inbound' \
 
 ```toml
 [vars]
-RESEND_API_KEY = "<你的-re…key>"
+RESEND_API_KEY = "***"
 ```
 
 然后：
@@ -236,27 +263,24 @@ curl -X POST https://send.<你的域名>/api/send \
 | Workers 请求 | 100,000 / 天 |
 | D1 读 | 5,000,000 / 天 |
 | D1 写 | 100,000 / 天 |
-| Email Routing 邮件 | 100 / 天（每个目标地址） |
+| Email Routing 邮件 | 100 / 天（每个目标地址）|
 
 **切勿**把此服务对外公开。每个外部请求都在消耗你的配额。如果你需要更大空间，请在前面加一层鉴权（每个用户独立 token、IP 白名单、或速率限制）——鉴权开关项目里已经预留好，别分享 token 就行。
 
 ---
 
-## 目录结构
+## 仓库规则
 
-```
-cf-mail-api/
-├── LICENSE              # GNU GPL-3.0
-├── README.md            # 英文文档
-├── README.zh-CN.md      # 本文件（中文）
-├── package.json
-├── schema.sql           # D1 schema
-├── wrangler.toml        # worker 配置（请替换占位符！）
-├── src/
-│   ├── index.js         # 主 worker（收件 + 邮箱 API）
-│   └── send.js          # 发件路由
-└── cloudflare_mail_client.py  # 可选 Python 客户端
-```
+`lingion/cf-mail-api` 是本项目的 **唯一主线**。任何协作副本或 fork（即便用于测试）都不应替代本仓作为主入口。项目所有有意义的演进都最终回到这里。
+
+---
+
+## 文档
+
+- `README.md` — English documentation
+- `README.zh.md` — 中文文档（本文件）
+- `RESEND_SETUP.md` — Resend / 发件配置笔记
+- `schema.sql` — D1 数据库结构参考
 
 ---
 

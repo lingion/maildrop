@@ -1,21 +1,30 @@
-# cf-mail-api
+<p align="center">
+  <a href="https://github.com/lingion/cf-mail-api/stargazers"><img src="https://img.shields.io/github/stars/lingion/cf-mail-api?style=for-the-badge&logo=github&color=FFD700" alt="Stars"></a>
+  <a href="https://github.com/lingion/cf-mail-api/network/members"><img src="https://img.shields.io/github/forks/lingion/cf-mail-api?style=for-the-badge&logo=github&color=8B5CF6" alt="Forks"></a>
+  <a href="https://github.com/lingion/cf-mail-api/issues"><img src="https://img.shields.io/github/issues/lingion/cf-mail-api?style=for-the-badge&logo=github&color=EF4444" alt="Issues"></a>
+  <a href="https://github.com/lingion/cf-mail-api/blob/main/LICENSE"><img src="https://img.shields.io/github/license/lingion/cf-mail-api?style=for-the-badge&logo=github&color=10B981" alt="License"></a>
+  <br>
+  <a href="https://github.com/lingion/cf-mail-api/commits/main"><img src="https://img.shields.io/github/last-commit/lingion/cf-mail-api?style=flat-square" alt="Last commit"></a>
+  <img src="https://img.shields.io/badge/runtime-Cloudflare%20Workers-F38020?style=flat-square&logo=cloudflare&logoColor=white" alt="CF Workers">
+  <img src="https://img.shields.io/badge/storage-Cloudflare%20D1-FF7043?style=flat-square&logo=cloudflare&logoColor=white" alt="D1">
+  <img src="https://img.shields.io/badge/lang-JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=black" alt="JS">
+  <a href="README.zh.md"><img src="https://img.shields.io/badge/README-中文-CC0000?style=flat-square" alt="中文"></a>
+</p>
 
-> Self-hosted temporary mailbox service on **Cloudflare Workers + D1** with your own custom subdomain.
-> Use it as a personal disposable-mailbox backend — generate any `xxx@<your-domain>` on the fly, read incoming mail, forward to your real inbox.
+<h1 align="center">cf-mail-api</h1>
 
-[中文文档](./README.zh-CN.md)
-
-| | |
-|---|---|
-| **License** | GNU GPL-3.0 |
-| **Runtime** | Cloudflare Workers (free tier OK) |
-| **Storage** | Cloudflare D1 (SQLite) |
-| **Inbound** | Cloudflare Email Routing → Worker → D1 + optional forward |
-| **Outbound** | Resend API (or any HTTP send provider) |
+<p align="center">
+  Self-hosted temporary mailbox service on <b>Cloudflare Workers + D1</b> with your own custom subdomain.<br>
+  Generate any <code>xxx@&lt;your-domain&gt;</code> on the fly, receive mail into D1, forward to your real inbox.
+</p>
 
 ---
 
-## ⚠️ Before You Deploy — Read This First
+> **Keywords:** Cloudflare Workers, Cloudflare D1, Email Routing, disposable email, temporary mailbox, custom subdomain, self-hosted mail server, free tier, forward mail, Resend API
+
+---
+
+## Before You Deploy — Read This First
 
 > **DO NOT** point this at anyone else's worker URL. **DO NOT** publish your deployed URL publicly. **DO NOT** use the default `*.workers.dev` URL as a shared service.
 >
@@ -25,15 +34,33 @@
 
 ---
 
-## Features
+## What Is in This Repository
 
-- Generate disposable mailbox addresses on demand: `POST /api/generate-email`
-- List mailboxes, list messages, fetch single message, delete, clear
-- Inbound webhook ingestion: `POST /api/inbound`
-- Auto-forward all inbound mail to your real inbox (e.g. QQ/Gmail) via `FORWARD_TO_EMAIL`
-- Optional outbound send via Resend (separate `send.<your-domain>` route)
-- Bearer-token / `x-api-key` / `?api_key=*** auth
-- Plain `curl`-friendly API, no SDK required
+| Component | Purpose |
+|---|---|
+| `src/index.js` | Main worker — inbound mail handler + mailbox API |
+| `src/send.js` | Optional outbound send route via Resend |
+| `schema.sql` | D1 database schema (mailboxes, messages) |
+| `wrangler.toml` | Worker config — **replace placeholders before deploy** |
+| `cloudflare_mail_client.py` | Optional Python client for the API |
+| `LICENSE` | GNU GPL-3.0 |
+| `README.md` | English (this file) |
+| `README.zh.md` | 中文文档 |
+
+---
+
+## Tech Stack
+
+| Layer | Choice |
+|---|---|
+| Runtime | Cloudflare Workers (V8 isolates) |
+| Storage | Cloudflare D1 (SQLite) |
+| Inbound | Cloudflare Email Routing → Worker |
+| Outbound (optional) | Resend HTTP API |
+| Auth | Bearer token / `x-api-key` / `?api_key=` |
+| Client (optional) | Python 3 (`requests`) |
+
+No Node dependencies. No framework. No build step. Pure `wrangler deploy`.
 
 ---
 
@@ -46,7 +73,7 @@
 - `wrangler` CLI: `npm i -g wrangler`
 - Node.js 18+
 
-### 2. Clone & configure
+### 2. Clone & install
 
 ```bash
 git clone https://github.com/lingion/cf-mail-api.git
@@ -69,7 +96,7 @@ Replace **every** `<your-domain>` placeholder with your own CF-managed domain. R
 The **mailbox receiving domain** (`mail.<your-domain>`), the **API domain** (`api.<your-domain>`), and the **send domain** (`send.<your-domain>`) should all live under one zone you control.
 
 ```toml
-# Example (DO NOT copy these values literally):
+# Example — DO NOT copy these values literally:
 [[routes]]
 pattern = "api.example.com/*"
 zone_name = "example.com"
@@ -195,7 +222,7 @@ If you want to **send** mail from a temp address too, configure a third route `s
 
 ```toml
 [vars]
-RESEND_API_KEY = "<your-re…key>"
+RESEND_API_KEY = "***"
 ```
 
 Then:
@@ -242,21 +269,18 @@ This project is designed to run entirely on Cloudflare's **free tier**:
 
 ---
 
-## Project Structure
+## Repository Rule
 
-```
-cf-mail-api/
-├── LICENSE              # GNU GPL-3.0
-├── README.md            # this file (English)
-├── README.zh-CN.md      # 中文文档
-├── package.json
-├── schema.sql           # D1 schema
-├── wrangler.toml        # worker config (replace placeholders!)
-├── src/
-│   ├── index.js         # main worker (inbound + mailbox API)
-│   └── send.js          # outbound send route
-└── cloudflare_mail_client.py  # optional Python client
-```
+`lingion/cf-mail-api` is the **only mainline** source of truth for this project. Any collaboration mirror or fork (e.g. for testing) should not replace this repo as the primary landing page. All meaningful project evolution lands here.
+
+---
+
+## Docs
+
+- `README.md` — English (this file)
+- `README.zh.md` — 中文文档
+- `RESEND_SETUP.md` — Resend / outbound setup notes
+- `schema.sql` — D1 database schema reference
 
 ---
 
