@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://github.com/lingion/cf-mail-api/stargazers"><img src="https://img.shields.io/github/stars/lingion/cf-mail-api?style=for-the-badge&logo=github&color=FFD700" alt="Stars"></a>
+  <a href="https://img.shields.io/github/stars/lingion/cf-mail-api?style=for-the-badge&logo=github&color=FFD700"><img src="https://img.shields.io/github/stars/lingion/cf-mail-api?style=for-the-badge&logo=github&color=FFD700" alt="Stars"></a>
   <a href="https://github.com/lingion/cf-mail-api/network/members"><img src="https://img.shields.io/github/forks/lingion/cf-mail-api?style=for-the-badge&logo=github&color=8B5CF6" alt="Forks"></a>
   <a href="https://github.com/lingion/cf-mail-api/issues"><img src="https://img.shields.io/github/issues/lingion/cf-mail-api?style=for-the-badge&logo=github&color=EF4444" alt="Issues"></a>
   <a href="https://github.com/lingion/cf-mail-api/blob/main/LICENSE"><img src="https://img.shields.io/github/license/lingion/cf-mail-api?style=for-the-badge&logo=github&color=10B981" alt="License"></a>
@@ -14,13 +14,39 @@
 <h1 align="center">cf-mail-api</h1>
 
 <p align="center">
-  基于 <b>Cloudflare Workers + D1</b> 自建临时邮箱服务，使用你自己的自定义子域名。<br>
-  随时生成 <code>xxx@&lt;你的域名&gt;</code>，收件入 D1，转发到你的真实邮箱。
+  基于 <b>Cloudflare Workers + D1</b> 的 webhook 临时邮箱后端。<br>
+  <b>零 DNS、零路由、零真实域名。</b>HTTP 推入，HTTP 读出。
 </p>
 
 ---
 
-> **关键词：** Cloudflare Workers、Cloudflare D1、Email Routing、临时邮箱、可丢弃邮箱、自定义子域名、自建邮件服务器、免费额度、邮件转发、Resend API
+> **关键词：** Cloudflare Workers、Cloudflare D1、webhook 邮箱、可丢弃邮箱、临时邮箱、自建邮件后端、API 优先、零配置邮件存储、MailHog 替代、dev mail 捕获
+
+---
+
+## 这是什么
+
+`cf-mail-api` 是一个 **无状态的 HTTP 邮件捕获后端**，完全跑在 Cloudflare 免费额度上。
+
+核心路径就是一次 HTTP 调用：
+
+```
+POST /api/inbound   →   写入 D1   →   GET 读回
+```
+
+完事。**不需要** DNS 记录、不需要 MX 记录、不需要 Email Routing、不需要真实域名所有权、不需要邮件服务器。所谓「邮箱地址」(`xxx@mail.<你的域名>`) 只是 D1 里的一行字符串——域名那部分根本不需要真能收信。
+
+典型用途：
+
+| 场景 | 怎么用 |
+|---|---|
+| **注册一次性邮箱** | 生成 mailbox → 去某站注册 → 轮询 `GET /api/emails?email=...` 拿验证邮件 |
+| **本地开发邮件捕获** | 把测试框架的 `mail()` 调用（或者任意 HTTP 发件方）推到 `POST /api/inbound` |
+| **MailHog / Mailpit 替代** | 同样 UX，但跑在 CF 托管基础设施上——不用本地容器 |
+| **API-first 邮件存储** | 任何上游服务用 webhook 就能往里存邮件 |
+| **个人临时邮箱后端** | 生成 → 用 → 丢弃 |
+
+如果你想叠加真 SMTP / Email Routing / 转发，参见 [可选扩展](#可选扩展)。但 webhook 模式才是主打卖点，不是降级方案。
 
 ---
 
@@ -38,7 +64,7 @@
 
 | 组件 | 用途 |
 |---|---|
-| `src/index.js` | 主 worker——收件处理 + 邮箱 API |
+| `src/index.js` | 主 worker——`POST /api/inbound` 写入器 + 邮箱查询 API |
 | `src/send.js` | 可选的发件路由（Resend） |
 | `schema.sql` | D1 数据库结构（mailboxes / messages） |
 | `wrangler.toml` | Worker 配置——**部署前必须替换占位符** |
@@ -55,9 +81,10 @@
 |---|---|
 | 运行时 | Cloudflare Workers（V8 isolates）|
 | 存储 | Cloudflare D1（SQLite）|
-| 收件 | Cloudflare Email Routing → Worker |
+| 入站 | **HTTP webhook**（`POST /api/inbound`）——零 DNS / 零 MX |
+| 入站（可选）| Cloudflare Email Routing → Worker |
 | 发件（可选）| Resend HTTP API |
-| 鉴权 | Bearer token / `x-api-key` / `?api_key=` |
+| 鉴权 | Bearer token / `x-api-key` / `?api_key=*** |
 | 客户端（可选）| Python 3（`requests`）|
 
 无 Node 依赖、无框架、无构建步骤。纯 `wrangler deploy`。
@@ -68,10 +95,10 @@
 
 ### 1. 准备
 
-- 一个由 Cloudflare 托管的域名（DNS 必须在 CF 上，因为要用 Email Routing）
 - 一个 Cloudflare 账号（免费版即可）
 - `wrangler` CLI：`npm i -g wrangler`
 - Node.js 18+
+- **不需要域名。** 个人用直接用默认的 `*.workers.dev` 路由就行。
 
 ### 2. 克隆 & 安装
 
@@ -91,39 +118,68 @@ wrangler d1 execute mail_api --remote --file=./schema.sql
 
 ### 4. 配置 `wrangler.toml`
 
-把 **所有** `<你的域名>` 占位符换成你自己 CF 托管的域名。把 `<your-d1-database-id>`、`<your-api-token>`、`<your-real-inbox@example.com>` 换成你自己的值。
-
-**收件子域**（`mail.<你的域名>`）、**API 子域**（`api.<你的域名>`）、**发件子域**（`send.<你的域名>`）必须在同一个 zone 下，且都在你自己名下。
+唯一必填项是 `API_TOKEN`。`[vars]` 里其他全是可选，参见 [可选扩展](#可选扩展)。
 
 ```toml
-# 示例——请勿直接复制这些值：
-[[routes]]
-pattern = "api.example.com/*"
-zone_name = "example.com"
+# 最小配置——替换 <your-d1-database-id> 和 <your-api-token>：
+name = "cf-mail-api"
+main = "src/index.js"
+compatibility_date = "2026-03-22"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mail_api"
+database_id = "<your-d1-database-id>"
 
 [vars]
-MAIL_DOMAIN = "mail.example.com"
 API_TOKEN = "<用 openssl rand -hex 32 生成>"
-FORWARD_TO_EMAIL = "you@gmail.com"
 ```
 
-### 5. 启用 Cloudflare Email Routing
+如果想绑定自定义域名（只有 [扩展 A：Email Routing](#扩展-a--真-smtp--email-routing) 需要）：
 
-在 Cloudflare 控制台你的域名下：
+```toml
+[[routes]]
+pattern = "api.<your-domain>/*"
+zone_name = "<你的域名>"
+```
 
-1. **Email → Email Routing → Enable**
-2. 添加一个目标地址（你的真实邮箱）并完成验证
-3. 添加 catch-all 路由：`*@mail.<你的域名>` → **Send to Worker** → 选 `cf-mail-api`
-
-Worker 会负责剩下的事——写入 D1、可选转发。
-
-### 6. 部署
+### 5. 部署
 
 ```bash
 wrangler deploy
 ```
 
-部署完成后，你的私有 API 在 `https://api.<你的域名>/`——**不要告诉任何人**。
+核心配置到此结束，可以直接调 API 了。
+
+### 6. 烟雾测试
+
+```bash
+# 1. 健康检查
+curl https://<your-worker>.<your-subdomain>.workers.dev/health
+
+# 2. 生成一个 mailbox
+curl -X POST https://<your-worker>.<your-subdomain>.workers.dev/api/generate-email \
+  -H 'x-api-key: ***' \
+  -H 'Content-Type: application/json' \
+  -d '{"prefix":"task_demo01","label":"注册测试","ttl_hours":24}'
+
+# 3. 通过 webhook 推一条邮件进去
+curl -X POST https://<your-worker>.<your-subdomain>.workers.dev/api/inbound \
+  -H 'x-api-key: ***' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "from":    "noreply@example.org",
+    "to":      "task_demo01@mail.<your-domain>",
+    "subject": "验证你的账号",
+    "text":    "点击链接验证..."
+  }'
+
+# 4. 读回
+curl 'https://<your-worker>.<your-subdomain>.workers.dev/api/emails?email=task_demo01@mail.<your-domain>' \
+  -H 'x-api-key: ***'
+```
+
+你现在有了一个完整可用的临时邮箱后端。没有 DNS、没有路由、没有真实邮件服务器参与。
 
 ---
 
@@ -132,125 +188,163 @@ wrangler deploy
 > 所有接口需要鉴权，三选一：
 > `Authorization: Bearer <API_TOKEN>` · `x-api-key: ***` · `?api_key=<API_TOKEN>`
 
-### 健康检查
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| GET | `/health` | 健康检查 |
+| POST | `/api/generate-email` | 创建一个新 mailbox |
+| GET | `/api/mailboxes` | 列出所有 mailbox |
+| GET | `/api/mailboxes/:id/messages` | 列出 mailbox 下的邮件 |
+| GET | `/api/mailboxes/:id/messages/:msg_id` | 读取单封邮件 |
+| GET | `/api/emails?email=...` | 按地址列出邮件 |
+| GET | `/api/email/:id` | 按 id 读取单封 |
+| DELETE | `/api/email/:id` | 删除单封 |
+| DELETE | `/api/emails/clear?email=...` | 清空某地址下所有邮件 |
+| GET | `/api/stats` | 计数（mailbox / message） |
+| **POST** | **`/api/inbound`** | **Webhook——把邮件存入 D1** |
+
+### POST /api/inbound（核心路径）
+
+核心场景下你只需要这一个接口。任何能做 HTTP POST 的系统都能往里存邮件。
 
 ```bash
-curl https://api.<你的域名>/health
-```
-
-### 生成邮箱
-
-```bash
-curl -X POST https://api.<你的域名>/api/generate-email \
+curl -X POST https://<your-worker>.<your-subdomain>.workers.dev/api/inbound \
   -H 'x-api-key: ***' \
   -H 'Content-Type: application/json' \
-  -d '{"prefix":"task_20260630_ab12","label":"注册测试","ttl_hours":24}'
+  -d '{
+    "from":    "alice@example.org",
+    "to":      "task_demo01@mail.<your-domain>",
+    "subject": "验证你的账号",
+    "text":    "点击链接验证...",
+    "html":    "<a href=\"...\">验证</a>"
+  }'
 ```
 
-可选字段：
+接受字段（除 `to` 之外全可选）：
+
+| 字段 | 别名 | 说明 |
+|---|---|---|
+| `to` | `to_addr`, `recipient` | 目标 mailbox 地址（字符串或数组——取首个元素）|
+| `from` | `from_addr` | 发件人（字符串或数组——取首个元素）|
+| `subject` | — | 主题 |
+| `text` | `text_body`, `body` | 纯文本正文 |
+| `html` | `html_body` | HTML 正文 |
+| `id` | `external_id` | 可选的外部消息 id，用于去重 / 关联 |
+
+如果 `to` 指向的 mailbox 在 D1 里还没记录，worker 会自动创建。所以你可以往**任意**地址推邮件，不需要先调 `generate-email`。
+
+### 生成 mailbox（可选）
+
+```bash
+curl -X POST https://<your-worker>.<your-subdomain>.workers.dev/api/generate-email \
+  -H 'x-api-key: ***' \
+  -H 'Content-Type: application/json' \
+  -d '{"prefix":"task_demo01","label":"注册测试","ttl_hours":24}'
+```
 
 | 字段 | 规则 |
 |---|---|
 | `prefix` / `name` | 可选，若提供须匹配 `^[a-z0-9_-]{6,40}$` |
 | `label` | 自由标签 |
-| `ttl_hours` | 邮箱有效期，默认 24 小时 |
+| `ttl_hours` | mailbox 有效期，默认 24 小时 |
 
-响应：
+这只是个拿「带元数据的 mailbox 记录」的便利工具。webhook **接受任意地址**，不要求先注册。
 
-```json
-{
-  "success": true,
-  "data": {
-    "mailbox_id": "task_20260630_ab12",
-    "email": "task_20260630_ab12@mail.<你的域名>",
-    "domain": "mail.<你的域名>",
-    "token": "***",
-    "created_at": "...",
-    "expires_at": "..."
-  }
-}
-```
-
-### 列出邮箱下的邮件
+### 读回邮件
 
 ```bash
-curl 'https://api.<你的域名>/api/mailboxes/<mailbox_id>/messages' \
+# 某地址下的所有邮件
+curl 'https://<your-worker>.<your-subdomain>.workers.dev/api/emails?email=task_demo01@mail.<your-domain>' \
+  -H 'x-api-key: ***'
+
+# 单封
+curl 'https://<your-worker>.<your-subdomain>.workers.dev/api/email/<message_id>' \
   -H 'x-api-key: ***'
 ```
 
-### 读取/删除单封邮件
+### 删除 / 清空
 
 ```bash
-curl 'https://api.<你的域名>/api/email/<message_id>'  -H 'x-api-key: ***'
-curl -X DELETE 'https://api.<你的域名>/api/email/<message_id>' -H 'x-api-key: ***'
-```
+curl -X DELETE 'https://<your-worker>.<your-subdomain>.workers.dev/api/email/<message_id>' \
+  -H 'x-api-key: ***'
 
-### 清空某个邮箱下的所有邮件
-
-```bash
-curl -X DELETE 'https://api.<你的域名>/api/emails/clear?email=<addr>@mail.<你的域名>' \
+curl -X DELETE 'https://<your-worker>.<your-subdomain>.workers.dev/api/emails/clear?email=<addr>@mail.<your-domain>' \
   -H 'x-api-key: ***'
 ```
 
 ### 统计
 
 ```bash
-curl 'https://api.<你的域名>/api/stats' -H 'x-api-key: ***'
+curl 'https://<your-worker>.<your-subdomain>.workers.dev/api/stats' -H 'x-api-key: ***'
 ```
-
-### 入站 webhook（外部发件方）
-
-```bash
-curl -X POST 'https://api.<你的域名>/api/inbound' \
-  -H 'x-api-key: ***' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "from": "alice@example.org",
-    "to": "task_20260630_ab12@mail.<你的域名>",
-    "subject": "验证你的账号",
-    "text": "点击链接验证..."
-  }'
-```
-
-支持字段：`id` / `external_id`，`from` / `from_addr`，`to` / `to_addr` / `recipient`，`subject`，`text` / `text_body`，`html` / `html_body`。
 
 ---
 
-## 发件功能（可选）
+## 可选扩展
 
-如果你想从临时邮箱 **发信**，再开第三个路由 `send.<你的域名>`，并在 `wrangler.toml` 设置 Resend API key：
+webhook 核心不需要这些，按需叠加。
+
+### 扩展 A — 真 SMTP / Email Routing
+
+绑定自定义域名 + 启用 Cloudflare Email Routing，让 Worker 也能接收真 SMTP 服务器投到 `xxx@mail.<你的域名>` 的邮件。
+
+1. 把域名加到 Cloudflare（DNS 必须在 CF）。
+2. 在 `wrangler.toml` 加路由：
+   ```toml
+   [[routes]]
+   pattern = "api.<你的域名>/*"
+   zone_name = "<你的域名>"
+   ```
+3. 设置 `[vars] MAIL_DOMAIN = "mail.<你的域名>"`。
+4. Cloudflare 控制台 → 你的域名 → **Email → Email Routing → Enable**，加 catch-all 路由 `*@mail.<你的域名>` → **Send to Worker** → `cf-mail-api`。
+
+真实 SMTP 投来的邮件会被 Cloudflare 派给 worker，走同一条路径写 D1，查询接口不变。
+
+### 扩展 B — 转发到真实邮箱
+
+邮件进 D1 之后，可选地再转发一份到你的真实邮箱（比如 QQ / Gmail），让你不用轮询 API 就能看到。
+
+在 `wrangler.toml`：
+
+```toml
+[vars]
+FORWARD_TO_EMAIL = "you@gmail.com"
+```
+
+Worker 会把每条入站消息 POST 给一个小转发器（你可以接 SMTP 中继、Mailgun、Resend、或别的）。`FORWARD_TO_EMAIL` 只是个目标字符串，worker 读取它。
+
+### 扩展 C — Resend 发件
+
+加第三个路由 `send.<你的域名>`，设置 Resend API key：
 
 ```toml
 [vars]
 RESEND_API_KEY = "***"
 ```
 
-然后：
-
 ```bash
 curl -X POST https://send.<你的域名>/api/send \
   -H 'x-api-key: ***' \
   -H 'Content-Type: application/json' \
   -d '{
-    "from":    "task_20260630_ab12@mail.<你的域名>",
+    "from":    "task_demo01@mail.<你的域名>",
     "to":      "bob@example.org",
-    "subject": "来自临时邮箱的问候",
-    "text":    "这封邮件通过 cf-mail-api 发出。"
+    "subject": "你好",
+    "text":    "通过 cf-mail-api 发出"
   }'
 ```
 
-**注意**：`from` 必须是 D1 里已存在的 mailbox，且域名要有合法的 SPF/DKIM 记录才能保证送达率。
+`from` 必须是 D1 里已存在的 mailbox，且域名要有合法的 SPF/DKIM 记录才能保证送达率。
 
 ---
 
 ## 配置速查
 
-| 环境变量 | 用途 |
-|---|---|
-| `MAIL_DOMAIN` | 收件用的 `<子域名>.<你的域名>` |
-| `API_TOKEN` | 公共 API 的 Bearer token（定期轮换） |
-| `FORWARD_TO_EMAIL` | （可选）所有入站邮件转发到此 |
-| `RESEND_API_KEY` | （可选）发件服务商 key，仅开启发件时需要 |
+| 环境变量 | 是否必填 | 用途 |
+|---|---|---|
+| `API_TOKEN` | **是** | API Bearer token。用 `openssl rand -hex 32` 生成。 |
+| `MAIL_DOMAIN` | 否 | 生成 mailbox 地址时显示的域名（如 `mail.<你的域名>`）。纯展示——邮件路由仍然走 webhook。 |
+| `FORWARD_TO_EMAIL` | 否 | 入站邮件副本的转发目标（扩展 B）。 |
+| `RESEND_API_KEY` | 否 | 发件服务商 key（扩展 C）。 |
 
 ---
 
@@ -263,7 +357,7 @@ curl -X POST https://send.<你的域名>/api/send \
 | Workers 请求 | 100,000 / 天 |
 | D1 读 | 5,000,000 / 天 |
 | D1 写 | 100,000 / 天 |
-| Email Routing 邮件 | 100 / 天（每个目标地址）|
+| Email Routing 邮件 | 100 / 天（每个目标地址，仅扩展 A）|
 
 **切勿**把此服务对外公开。每个外部请求都在消耗你的配额。如果你需要更大空间，请在前面加一层鉴权（每个用户独立 token、IP 白名单、或速率限制）——鉴权开关项目里已经预留好，别分享 token 就行。
 
@@ -279,7 +373,7 @@ curl -X POST https://send.<你的域名>/api/send \
 
 - `README.md` — English documentation
 - `README.zh.md` — 中文文档（本文件）
-- `RESEND_SETUP.md` — Resend / 发件配置笔记
+- `RESEND_SETUP.md` — 历史 Resend / 发件配置笔记
 - `schema.sql` — D1 数据库结构参考
 
 ---
