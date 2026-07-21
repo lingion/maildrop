@@ -84,7 +84,12 @@ function renderSendPage(env) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>临时邮箱发送 - ${mailDomain}</title>
+<title>临时邮箱发送 - ${mailDomain} | cf-mail-api</title>
+<meta name="description" content="从 ${mailDomain} 发送一次性临时邮件。Cloudflare Workers + D1 驱动的轻量邮件 webhook 服务，支持 Resend 发件。">
+<meta property="og:title" content="临时邮箱发送 - cf-mail-api">
+<meta property="og:description" content="Cloudflare Workers 驱动的临时邮箱发送服务，基于 D1 存储，支持 Resend 外发和 Email Routing 入站。">
+<meta property="og:type" content="website">
+<meta name="robots" content="noindex, follow">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
@@ -182,7 +187,7 @@ async function doSend() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': 'gpt-test'
+        'x-api-*** '' // 🔑 Set your API key here
       },
       body: JSON.stringify(payload)
     });
@@ -238,11 +243,10 @@ function auth(req, env) {
   const xApiKey = req.headers.get('x-api-key') || '';
   const queryApiKey = url.searchParams.get('api_key') || '';
   const envToken = String(env.API_TOKEN || '');
+  if (!envToken) return false;
   return [bearer, xApiKey, queryApiKey].some((value) =>
-    value === 'gpt-test' ||
     value === envToken ||
-    value === `Bearer ${envToken}` ||
-    value === 'Bearer gpt-test'
+    value === `Bearer ${envToken}`
   );
 }
 

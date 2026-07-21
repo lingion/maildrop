@@ -1,38 +1,45 @@
 <p align="center">
-  <a href="https://img.shields.io/github/stars/lingion/cf-mail-api?style=for-the-badge&logo=github&color=FFD700"><img src="https://img.shields.io/github/stars/lingion/cf-mail-api?style=for-the-badge&logo=github&color=FFD700" alt="Stars"></a>
-  <a href="https://github.com/lingion/cf-mail-api/network/members"><img src="https://img.shields.io/github/forks/lingion/cf-mail-api?style=for-the-badge&logo=github&color=8B5CF6" alt="Forks"></a>
-  <a href="https://github.com/lingion/cf-mail-api/issues"><img src="https://img.shields.io/github/issues/lingion/cf-mail-api?style=for-the-badge&logo=github&color=EF4444" alt="Issues"></a>
-  <a href="https://github.com/lingion/cf-mail-api/blob/main/LICENSE"><img src="https://img.shields.io/github/license/lingion/cf-mail-api?style=for-the-badge&logo=github&color=10B981" alt="License"></a>
+  <a href="https://img.shields.io/github/stars/lingion/maildrop?style=for-the-badge&logo=github&color=FFD700"><img src="https://img.shields.io/github/stars/lingion/maildrop?style=for-the-badge&logo=github&color=FFD700" alt="Stars"></a>
+  <a href="https://github.com/lingion/maildrop/network/members"><img src="https://img.shields.io/github/forks/lingion/maildrop?style=for-the-badge&logo=github&color=8B5CF6" alt="Forks"></a>
+  <a href="https://github.com/lingion/maildrop/issues"><img src="https://img.shields.io/github/issues/lingion/maildrop?style=for-the-badge&logo=github&color=EF4444" alt="Issues"></a>
+  <a href="https://github.com/lingion/maildrop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/lingion/maildrop?style=for-the-badge&logo=github&color=10B981" alt="License"></a>
   <br>
-  <a href="https://github.com/lingion/cf-mail-api/commits/main"><img src="https://img.shields.io/github/last-commit/lingion/cf-mail-api?style=flat-square" alt="Last commit"></a>
+  <a href="https://github.com/lingion/maildrop/commits/main"><img src="https://img.shields.io/github/last-commit/lingion/maildrop?style=flat-square" alt="Last commit"></a>
   <img src="https://img.shields.io/badge/runtime-Cloudflare%20Workers-F38020?style=flat-square&logo=cloudflare&logoColor=white" alt="CF Workers">
   <img src="https://img.shields.io/badge/storage-Cloudflare%20D1-FF7043?style=flat-square&logo=cloudflare&logoColor=white" alt="D1">
   <img src="https://img.shields.io/badge/lang-JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=black" alt="JS">
   <a href="README.zh.md"><img src="https://img.shields.io/badge/README-中文-CC0000?style=flat-square" alt="中文"></a>
 </p>
 
-<h1 align="center">cf-mail-api</h1>
+<h1 align="center">MailDrop</h1>
 
 <p align="center">
-  HTTP webhook mailbox backend on Cloudflare Workers + D1.<br>
-  Mail is deposited via <code>POST /api/inbound</code> and read back via the same API.
+  API-first disposable mailboxes on Cloudflare Workers + D1.<br>
+  Webhook-native. Zero DNS. Built for machines, not browsers.
 </p>
 
 ---
 
-## Overview
+## What is MailDrop?
 
-`cf-mail-api` stores mail messages in a Cloudflare D1 database and exposes them over HTTP.
+MailDrop is not a web-based temp-mail service. It's a **programmable mailbox backend** for AI agents, CI/CD pipelines, and automation scripts.
 
-The deposit path is one HTTP call: `POST /api/inbound`. There is no required DNS record, MX record, or real domain that can receive SMTP. The "mailbox address" (`xxx@mail.<your-domain>`) is a string identifier in D1; the domain part does not need to actually receive mail.
+- 🔌 **Webhook-native**: `POST /api/inbound` is all you need to drop a message into a mailbox.
+- 🌐 **No DNS, no MX, no SMTP**: The mailbox address (`xxx@mail.<your-domain>`) is just a string in D1. No real domain required.
+- ⚡ **Zero cost at scale**: Runs entirely within Cloudflare's free tier — 100K requests/day, 5M D1 reads/day.
+- 📦 **Single command deploy**: `wrangler deploy`. No build step. No Node dependencies.
+- 🤖 **Agent-first design**: REST API with Bearer/auth-key, JSON in/out — plug straight into any AI agent's tool loop.
 
-The repository also includes:
+---
 
-- An optional Cloudflare Email Routing integration that allows real SMTP delivery to be dispatched into the same worker.
-- An optional `FORWARD_TO_EMAIL` variable for forwarding copies of inbound mail to a second address.
-- An optional Resend-based send route on a third subdomain.
+## Who is it for?
 
-These three are independent of the webhook path. Each is documented under [Optional Add-ons](#optional-add-ons).
+| You want... | Use this |
+|-------------|----------|
+| A throwaway inbox to grab verification codes in your browser | ❌ Pick any temp-mail website |
+| A mailbox endpoint your CI script can POST to and poll via API | ✅ |
+| A mail receiver wired into an AI agent's tool function | ✅ |
+| A programmable inbox you own, with zero ongoing cost | ✅ |
 
 ---
 
@@ -79,8 +86,8 @@ The worker has no Node dependencies and no build step. `wrangler deploy` is the 
 ### 2. Clone and install
 
 ```bash
-git clone https://github.com/lingion/cf-mail-api.git
-cd cf-mail-api
+git clone https://github.com/lingion/maildrop.git
+cd maildrop
 npm install
 ```
 
@@ -98,7 +105,7 @@ The only required environment variable is `API_TOKEN`. All other variables are o
 
 ```toml
 # Minimal configuration — replace <your-d1-database-id> and <your-api-token>:
-name = "cf-mail-api"
+name = "maildrop"
 main = "src/index.js"
 compatibility_date = "2026-03-22"
 
@@ -263,7 +270,7 @@ Allows the worker to receive mail that real SMTP servers deliver to `xxx@mail.<y
    zone_name = "<your-domain>"
    ```
 3. Set `[vars] MAIL_DOMAIN = "mail.<your-domain>"`.
-4. In the Cloudflare dashboard for the zone: **Email → Email Routing → Enable**, then add a catch-all route `*@mail.<your-domain>` → **Send to Worker** → `cf-mail-api`.
+4. In the Cloudflare dashboard for the zone: **Email → Email Routing → Enable**, then add a catch-all route `*@mail.<your-domain>` → **Send to Worker** → `maildrop`.
 
 Real SMTP messages are dispatched to the worker by Cloudflare and stored in D1 via the same path used by the webhook.
 
@@ -295,7 +302,7 @@ curl -X POST https://send.<your-domain>/api/send \
     "from":    "task_demo01@mail.<your-domain>",
     "to":      "bob@example.org",
     "subject": "Hello",
-    "text":    "Sent via cf-mail-api"
+    "text":    "Sent via MailDrop"
   }'
 ```
 
@@ -331,7 +338,7 @@ The auth flag is in place to prevent unauthenticated use, but it does not protec
 
 ## Repository Rule
 
-`lingion/cf-mail-api` is the only mainline source of truth for this project. Mirrors and forks should not be treated as the primary landing page. All development lands here.
+`lingion/maildrop` is the only mainline source of truth for this project. Mirrors and forks should not be treated as the primary landing page. All development lands here.
 
 ---
 
@@ -354,4 +361,4 @@ You may use, modify, and redistribute this work, including for commercial purpos
 
 ## Contributing
 
-PRs are accepted at <https://github.com/lingion/cf-mail-api>. By contributing, you agree that your contribution is licensed under GPL-3.0.
+PRs are accepted at <https://github.com/lingion/maildrop>. By contributing, you agree that your contribution is licensed under GPL-3.0.

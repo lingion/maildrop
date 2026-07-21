@@ -1,5 +1,5 @@
 {
-  "name": "cf-mail-api",
+  "name": "maildrop",
   "version": "0.1.0",
   "private": true,
   "type": "module",
