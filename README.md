@@ -14,32 +14,36 @@
 <h1 align="center">MailDrop</h1>
 
 <p align="center">
-  API-first disposable mailboxes on Cloudflare Workers + D1.<br>
-  Webhook-native. Zero DNS. Built for machines, not browsers.
+  A disposable mail backend on Cloudflare Workers + D1.<br>
+  HTTP-native. Zero DNS. Built for scripts, not browsers.
 </p>
 
 ---
 
 ## What is MailDrop?
 
-MailDrop is not a web-based temp-mail service. It's a **programmable mailbox backend** for AI agents, CI/CD pipelines, and automation scripts.
+Every temp-mail service is built for humans: open a webpage, click generate, copy an address, refresh to check for replies.
 
-- 🔌 **Webhook-native**: `POST /api/inbound` is all you need to drop a message into a mailbox.
-- 🌐 **No DNS, no MX, no SMTP**: The mailbox address (`xxx@mail.<your-domain>`) is just a string in D1. No real domain required.
-- ⚡ **Zero cost at scale**: Runs entirely within Cloudflare's free tier — 100K requests/day, 5M D1 reads/day.
-- 📦 **Single command deploy**: `wrangler deploy`. No build step. No Node dependencies.
-- 🤖 **Agent-first design**: REST API with Bearer/auth-key, JSON in/out — plug straight into any AI agent's tool loop.
+MailDrop is not that.
+
+MailDrop is an HTTP API you deploy to your own Cloudflare account. Give your AI agent the ability to receive emails. Let your CI pipeline drop reports into a queryable address. Spin up a test mailbox with a TTL in one call during an automated signup flow.
+
+- 🔌 **One webhook**: `POST /api/inbound` deposits a message. `GET /api/emails?email=...` reads it back. That's the contract.
+- 🌐 **No DNS. No MX records. No SMTP**: The address `xxx@mail.<your-domain>` is just a string in D1. The domain part doesn't need to exist.
+- ⚡ **Free tier covers everything**: 100K requests/day, 5M D1 reads/day. You'll never come close as an individual user.
+- 📦 **One command**: `wrangler deploy`. No build step. Zero npm dependencies.
+- 🤖 **API-first**: Bearer token auth, JSON in/out. Wire it into Claude Code or any CI script in five minutes.
 
 ---
 
-## Who is it for?
+## Who is this for?
 
-| You want... | Use this |
-|-------------|----------|
-| A throwaway inbox to grab verification codes in your browser | ❌ Pick any temp-mail website |
-| A mailbox endpoint your CI script can POST to and poll via API | ✅ |
-| A mail receiver wired into an AI agent's tool function | ✅ |
-| A programmable inbox you own, with zero ongoing cost | ✅ |
+| You want to... | Use this |
+|----------------|----------|
+| Open a webpage, grab a code, close the tab | ❌ Any temp-mail website |
+| Have your CI script POST a message and poll it back via API | ✅ |
+| Add an email receiver to your AI agent's tool function | ✅ |
+| Own a programmable mail endpoint with zero recurring cost | ✅ |
 
 ---
 
@@ -70,7 +74,7 @@ MailDrop is not a web-based temp-mail service. It's a **programmable mailbox bac
 | Auth | Bearer token / `x-api-key` / `?api_key=*** |
 | Client (optional) | Python 3 (`requests`) |
 
-The worker has no Node dependencies and no build step. `wrangler deploy` is the only required command.
+The worker has zero Node dependencies and no build step. `wrangler deploy` is all you need to run.
 
 ---
 
@@ -332,13 +336,13 @@ The worker is designed to run entirely within Cloudflare's free tier:
 | D1 writes | 100,000 / day |
 | Email Routing messages | 100 / day per destination (Add-on A only) |
 
-The auth flag is in place to prevent unauthenticated use, but it does not protect against a token being leaked or shared. Public exposure of the worker URL will exhaust the free-tier quota and render the deployment unusable for its owner.
+Auth prevents anonymous access, but won't save you if the token leaks. Don't expose your worker URL publicly — once someone burns through the free quota, your deployment becomes unusable.
 
 ---
 
 ## Repository Rule
 
-`lingion/maildrop` is the only mainline source of truth for this project. Mirrors and forks should not be treated as the primary landing page. All development lands here.
+`lingion/maildrop` is the sole upstream for this project. Don't treat mirrors or forks as the primary entry point. Everything merges here.
 
 ---
 
